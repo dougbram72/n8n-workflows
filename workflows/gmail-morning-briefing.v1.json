@@ -1,0 +1,131 @@
+{
+  "name": "Gmail - Morning Briefing",
+  "nodes": [
+    {
+      "id": "ManualTrigger",
+      "name": "Manual Trigger / Cron",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-800, 0]
+    },
+    {
+      "id": "ListImportant",
+      "name": "List Important Mail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [-520, -160],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      },
+      "parameters": {
+        "resource": "message",
+        "operation": "getAll",
+        "returnAll": true,
+        "additionalFields": {
+          "format": "minimal",
+          "q": "in:inbox newer_than:1d -category:promotions -category:social -category:updates"
+        }
+      }
+    },
+    {
+      "id": "ListBills",
+      "name": "List Bills / Payments",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [-520, 0],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      },
+      "parameters": {
+        "resource": "message",
+        "operation": "getAll",
+        "returnAll": true,
+        "additionalFields": {
+          "format": "minimal",
+          "q": "in:inbox newer_than:7d (subject:(invoice OR receipt OR payment OR bill OR due) OR from:(paypal.com OR amazon.com OR utility OR bank))"
+        }
+      }
+    },
+    {
+      "id": "ListShipments",
+      "name": "List Shipments",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [-520, 160],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      },
+      "parameters": {
+        "resource": "message",
+        "operation": "getAll",
+        "returnAll": true,
+        "additionalFields": {
+          "format": "minimal",
+          "q": "in:inbox newer_than:7d (subject:(shipped OR delivery OR arriving OR out for delivery) OR from:(ups.com OR usps.com OR fedex.com OR amazon.com))"
+        }
+      }
+    },
+    {
+      "id": "ListSocial",
+      "name": "List Social Notifications",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [-520, 320],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      },
+      "parameters": {
+        "resource": "message",
+        "operation": "getAll",
+        "returnAll": true,
+        "additionalFields": {
+          "format": "full",
+          "q": "in:inbox newer_than:1d category:social"
+        }
+      }
+    },
+    {
+      "id": "BuildSummary",
+      "name": "Build JSON Summary",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [-200, 80],
+      "parameters": {
+        "functionCode": "// Expect input from 4 sources via pairedItems: important, bills, shipments, social\n// This node should be wired with Merge nodes as needed in the UI.\n\nconst out = {\n  generatedAt: new Date().toISOString(),\n  important: [],\n  bills: [],\n  shipments: [],\n  social: []\n};\n\n// Helper to map Gmail message to a compact object\nfunction mapMsg(item) {\n  const j = item.json || {};\n  return {\n    id: j.id,\n    threadId: j.threadId,\n    snippet: j.snippet,\n    labelIds: j.labelIds,\n    internalDate: j.internalDate\n  };\n}\n\n// This assumes each input branch has been tagged before merge with a "source" field.\nfor (const item of items) {\n  const src = item.json._source;\n  if (src === 'important') out.important.push(mapMsg(item));\n  if (src === 'bills') out.bills.push(mapMsg(item));\n  if (src === 'shipments') out.shipments.push(mapMsg(item));\n  if (src === 'social') out.social.push(mapMsg(item));\n}\n\nreturn [{ json: out }];\n"
+      }
+    },
+    {
+      "id": "WebhookOut",
+      "name": "Send to Alfred (Webhook)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [40, 80],
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR-GATEWAY/hooks/agent",
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParametersJson": "={\"message\": \"n8n gmail-morning-briefing payload\", \"name\": \"gmail-briefing\", \"sessionKey\": \"hook:n8n:gmail-briefing\", \"wakeMode\": \"now\", \"deliver\": false, \"payload\": $json }",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {},
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "gmail-morning-briefing-v1"
+}
